@@ -22,15 +22,10 @@ import (
 )
 
 const (
-	apiURL                       = "https://testnet.boltz.exchange/api"
 	createSwapEndpoint           = "/createswap"
 	swapStatusEndpoint           = "/swapstatus"
 	broadcastTransactionEndpoint = "/broadcasttransaction"
 	claimWitnessInputSize        = 1 + 1 + 73 + 1 + 32 + 1 + 100
-)
-
-var (
-	chain = &chaincfg.TestNet3Params
 )
 
 type boltzReverseSwap struct {
