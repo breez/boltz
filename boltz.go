@@ -274,6 +274,29 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 	return
 }
 
+//ClaimFees return the fees needed for the claimed transaction for a feePerKw
+func ClaimFee(claimAddress string, feePerKw int64) (int64, error) {
+	addr, err := btcutil.DecodeAddress(claimAddress, chain)
+	if err != nil {
+		return 0, fmt.Errorf("btcutil.DecodeAddress(%v) %w", addr, err)
+	}
+	claimScript, err := txscript.PayToAddrScript(addr)
+	if err != nil {
+		return 0, fmt.Errorf("txscript.PayToAddrScript(%v): %w", addr.String(), err)
+	}
+	claimTx := wire.NewMsgTx(1)
+	txIn := wire.NewTxIn(&wire.OutPoint{}, nil, nil)
+	txIn.Sequence = 0
+	claimTx.AddTxIn(txIn)
+	txOut := wire.TxOut{PkScript: claimScript}
+	claimTx.AddTxOut(&txOut)
+
+	// Calcluate the weight and the fee
+	weight := 4*claimTx.SerializeSizeStripped() + claimWitnessInputSize*len(claimTx.TxIn)
+	fee := chainfee.SatPerKWeight(feePerKw).FeeForWeight(int64(weight))
+	return int64(fee), nil
+}
+
 func claimTransaction(
 	script []byte,
 	amt btcutil.Amount,
@@ -281,7 +304,7 @@ func claimTransaction(
 	claimAddress btcutil.Address,
 	preimage []byte,
 	privateKey []byte,
-	feePerKw chainfee.SatPerKWeight,
+	fees btcutil.Amount,
 ) ([]byte, error) {
 	claimTx := wire.NewMsgTx(1)
 	txIn := wire.NewTxIn(txout, nil, nil)
@@ -295,10 +318,8 @@ func claimTransaction(
 	txOut := wire.TxOut{PkScript: claimScript}
 	claimTx.AddTxOut(&txOut)
 
-	// Calcluate the weight and the fee
-	weight := 4*claimTx.SerializeSizeStripped() + claimWitnessInputSize*len(claimTx.TxIn)
 	// Adjust the amount in the txout
-	claimTx.TxOut[0].Value = int64(amt - feePerKw.FeeForWeight(int64(weight)))
+	claimTx.TxOut[0].Value = int64(amt - fees)
 
 	sigHashes := txscript.NewTxSigHashes(claimTx)
 	key, _ := btcec.PrivKeyFromBytes(btcec.S256(), privateKey)
@@ -350,7 +371,7 @@ func ClaimTransaction(
 	redeemScript, transactionHex string,
 	claimAddress string,
 	preimage, key string,
-	feePerKw int64,
+	fees int64,
 ) (string, error) {
 	txSerialized, err := hex.DecodeString(transactionHex)
 	if err != nil {
@@ -397,7 +418,7 @@ func ClaimTransaction(
 		return "", fmt.Errorf("hex.DecodeString(%v): %w", key, err)
 	}
 
-	ctx, err := claimTransaction(script, amt, out, addr, preim, privateKey, chainfee.SatPerKWeight(feePerKw))
+	ctx, err := claimTransaction(script, amt, out, addr, preim, privateKey, btcutil.Amount(fees))
 	if err != nil {
 		return "", fmt.Errorf("claimTransaction: %w", err)
 	}
