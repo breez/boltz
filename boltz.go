@@ -208,9 +208,12 @@ func CheckTransaction(transactionHex, lockupAddress string, amt int64) (string, 
 }
 
 type transactionStatus struct {
-	Status         string `json:"status"`
-	TransactionID  string `json:"transactionId"`
-	TransactionHex string `json:"transactionHex"`
+	Status      string `json:"status"`
+	Transaction struct {
+		ID  string `json:"id"`
+		Hex string `json:"hex"`
+		ETA string `json:"eta",omitempty`
+	} `json:"transaction",omitempty`
 }
 
 // GetTransaction return the transaction after paying the ln invoice
@@ -256,18 +259,18 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 	}
 
 	var calculatedTxid string
-	calculatedTxid, err = CheckTransaction(ts.TransactionHex, lockupAddress, amt)
+	calculatedTxid, err = CheckTransaction(ts.Transaction.Hex, lockupAddress, amt)
 	if err != nil {
-		err = fmt.Errorf("CheckTransaction(%v, %v, %v): %w)", ts.TransactionHex, lockupAddress, amt, err)
+		err = fmt.Errorf("CheckTransaction(%v, %v, %v): %w)", ts.Transaction.Hex, lockupAddress, amt, err)
 		return
 	}
-	if calculatedTxid != ts.TransactionID {
-		err = fmt.Errorf("bad txid: %v != %v", ts.TransactionID, calculatedTxid)
+	if calculatedTxid != ts.Transaction.ID {
+		err = fmt.Errorf("bad txid: %v != %v", ts.Transaction.ID, calculatedTxid)
 		return
 	}
 
-	tx = ts.TransactionHex
-	txid = ts.TransactionID
+	tx = ts.Transaction.Hex
+	txid = ts.Transaction.ID
 	return
 }
 
