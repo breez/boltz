@@ -266,7 +266,7 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 		err = fmt.Errorf("bad txid: %v != %v", ts.Transaction.ID, calculatedTxid)
 		return
 	}
-
+	status = ts.Status
 	tx = ts.Transaction.Hex
 	txid = ts.Transaction.ID
 	return
