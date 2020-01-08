@@ -216,7 +216,7 @@ type transactionStatus struct {
 }
 
 // GetTransaction return the transaction after paying the ln invoice
-func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx string, err error) {
+func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx string, eta int, err error) {
 	buffer := new(bytes.Buffer)
 	err = json.NewEncoder(buffer).Encode(struct {
 		ID string `json:"id"`
@@ -269,6 +269,7 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 	status = ts.Status
 	tx = ts.Transaction.Hex
 	txid = ts.Transaction.ID
+	eta = ts.Transaction.ETA
 	return
 }
 
