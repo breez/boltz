@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -252,7 +251,6 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 		err = fmt.Errorf("json decode (status ok): %w", err)
 		return
 	}
-	log.Printf("%#v\n", ts)
 	if ts.Status != "transaction.mempool" && ts.Status != "transaction.confirmed" {
 		err = fmt.Errorf("transaction not in mempool or settled/canceled")
 		return
