@@ -211,7 +211,7 @@ type transactionStatus struct {
 	Transaction struct {
 		ID  string `json:"id"`
 		Hex string `json:"hex"`
-		ETA string `json:"eta",omitempty`
+		ETA int    `json:"eta",omitempty`
 	} `json:"transaction",omitempty`
 }
 
