@@ -27,6 +27,12 @@ const (
 	claimWitnessInputSize        = 1 + 1 + 73 + 1 + 32 + 1 + 100
 )
 
+type BadRequestError string
+
+func (e BadRequestError) Error() string {
+	return string(e)
+}
+
 type boltzReverseSwap struct {
 	ID                 string `json:"id"`
 	Invoice            string `json:"invoice"`
@@ -78,7 +84,7 @@ func createReverseSwap(amt int64, preimage []byte, key *btcec.PrivateKey) (*bolt
 		if err != nil {
 			return nil, fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
 		}
-		return nil, fmt.Errorf("createswap result (status: %v) %v", resp.Status, e.Error)
+		return nil, fmt.Errorf("createswap result (status: %v) %w", resp.Status, BadRequestError(e.Error))
 	}
 
 	var rs boltzReverseSwap
@@ -241,7 +247,7 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 			err = fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
 			return
 		}
-		err = fmt.Errorf("swapstatus result (status: %v) %v", resp.Status, e.Error)
+		err = fmt.Errorf("swapstatus result (status: %v) %w", resp.Status, BadRequestError(e.Error))
 		return
 	}
 
