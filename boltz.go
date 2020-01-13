@@ -29,8 +29,8 @@ const (
 
 type BadRequestError string
 
-func (e BadRequestError) Error() string {
-	return string(e)
+func (e *BadRequestError) Error() string {
+	return string(*e)
 }
 
 type boltzReverseSwap struct {
@@ -84,7 +84,8 @@ func createReverseSwap(amt int64, preimage []byte, key *btcec.PrivateKey) (*bolt
 		if err != nil {
 			return nil, fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
 		}
-		return nil, fmt.Errorf("createswap result (status: %v) %w", resp.Status, BadRequestError(e.Error))
+		badRequestError := BadRequestError(e.Error)
+		return nil, fmt.Errorf("createswap result (status: %v) %w", resp.Status, &badRequestError)
 	}
 
 	var rs boltzReverseSwap
@@ -247,7 +248,8 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 			err = fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
 			return
 		}
-		err = fmt.Errorf("swapstatus result (status: %v) %w", resp.Status, BadRequestError(e.Error))
+		badRequestError := BadRequestError(e.Error)
+		err = fmt.Errorf("createswap result (status: %v) %w", resp.Status, &badRequestError)
 		return
 	}
 
