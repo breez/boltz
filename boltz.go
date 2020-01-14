@@ -264,15 +264,17 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 		return
 	}
 
-	var calculatedTxid string
-	calculatedTxid, err = CheckTransaction(ts.Transaction.Hex, lockupAddress, amt)
-	if err != nil {
-		err = fmt.Errorf("CheckTransaction(%v, %v, %v): %w)", ts.Transaction.Hex, lockupAddress, amt, err)
-		return
-	}
-	if calculatedTxid != ts.Transaction.ID {
-		err = fmt.Errorf("bad txid: %v != %v", ts.Transaction.ID, calculatedTxid)
-		return
+	if lockupAddress != "" {
+		var calculatedTxid string
+		calculatedTxid, err = CheckTransaction(ts.Transaction.Hex, lockupAddress, amt)
+		if err != nil {
+			err = fmt.Errorf("CheckTransaction(%v, %v, %v): %w)", ts.Transaction.Hex, lockupAddress, amt, err)
+			return
+		}
+		if calculatedTxid != ts.Transaction.ID {
+			err = fmt.Errorf("bad txid: %v != %v", ts.Transaction.ID, calculatedTxid)
+			return
+		}
 	}
 	status = ts.Status
 	tx = ts.Transaction.Hex
