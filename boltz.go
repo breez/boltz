@@ -21,6 +21,7 @@ import (
 )
 
 const (
+	getPairsEndpoint             = "/getpairs"
 	createSwapEndpoint           = "/createswap"
 	swapStatusEndpoint           = "/swapstatus"
 	broadcastTransactionEndpoint = "/broadcasttransaction"
@@ -46,6 +47,84 @@ type ReverseSwap struct {
 	boltzReverseSwap
 	Preimage string
 	Key      string
+}
+
+type ReverseSwapInfo struct {
+	Max  int64
+	Min  int64
+	Fees struct {
+		Percentage float64
+		Lockup     int64
+		Claim      int64
+	}
+}
+
+func GetReverseSwapInfo() (*ReverseSwapInfo, error) {
+	resp, err := http.Get(apiURL + getPairsEndpoint)
+	if err != nil {
+		return nil, fmt.Errorf("getpairs get %v: %w", apiURL+getPairsEndpoint, err)
+	}
+	defer resp.Body.Close()
+
+	var pairs struct {
+		Warnings []string `json:"warnings"`
+		Pairs    map[string]struct {
+			Rate   float64 `json:"rate"`
+			Limits struct {
+				Maximal         int64 `json:"maximal"`
+				Minimal         int64 `json:"minimal"`
+				MaximalZeroConf struct {
+					BaseAsset  int64 `json:"baseAsset"`
+					QuoteAsset int64 `json:"quoteAsset"`
+				} `json:"maximalZeroConf"`
+			}
+			Fees struct {
+				Percentage float64 `json:"percentage"`
+				MinerFees  struct {
+					BaseAsset struct {
+						Normal  int64 `json:"normal"`
+						Reverse struct {
+							Lockup int64 `json:"lockup"`
+							Claim  int64 `json:"claim"`
+						} `json:"reverse"`
+					} `json:"baseAsset"`
+					QuoteAsset struct {
+						Normal  int64 `json:"normal"`
+						Reverse struct {
+							Lockup int64 `json:"lockup"`
+							Claim  int64 `json:"claim"`
+						} `json:"reverse"`
+					} `json:"quoteAsset"`
+				} `json:"minerFees"`
+			} `json:"fees"`
+		} `json:"pairs"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&pairs)
+	if err != nil {
+		return nil, fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
+	}
+	for _, w := range pairs.Warnings {
+		if w == "reverse.swaps.disabled" {
+			return nil, fmt.Errorf("reverse.swaps.disabled")
+		}
+	}
+	btcPair, ok := pairs.Pairs["BTC/BTC"]
+	if !ok {
+		return nil, fmt.Errorf("no BTC/BTC pair")
+	}
+	return &ReverseSwapInfo{
+		Max: btcPair.Limits.Maximal,
+		Min: btcPair.Limits.Minimal,
+		Fees: struct {
+			Percentage float64
+			Lockup     int64
+			Claim      int64
+		}{
+			Percentage: btcPair.Fees.Percentage,
+			Lockup:     btcPair.Fees.MinerFees.BaseAsset.Reverse.Lockup,
+			Claim:      btcPair.Fees.MinerFees.BaseAsset.Reverse.Claim,
+		},
+	}, nil
 }
 
 func createReverseSwap(amt int64, preimage []byte, key *btcec.PrivateKey) (*boltzReverseSwap, error) {
