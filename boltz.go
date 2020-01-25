@@ -25,7 +25,7 @@ const (
 	createSwapEndpoint           = "/createswap"
 	swapStatusEndpoint           = "/swapstatus"
 	broadcastTransactionEndpoint = "/broadcasttransaction"
-	claimWitnessInputSize        = 1 + 1 + 73 + 1 + 32 + 1 + 100
+	claimWitnessInputSize        = 1 + 1 + 8 + 73 + 1 + 32 + 1 + 100
 )
 
 type BadRequestError string
