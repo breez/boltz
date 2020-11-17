@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -27,6 +28,8 @@ const (
 	broadcastTransactionEndpoint = "/broadcasttransaction"
 	claimWitnessInputSize        = 1 + 1 + 8 + 73 + 1 + 32 + 1 + 100
 )
+
+var SwapNotExist = errors.New("transaction not in mempool or settled/canceled")
 
 type BadRequestError string
 
@@ -339,7 +342,7 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 		return
 	}
 	if ts.Status != "transaction.mempool" && ts.Status != "transaction.confirmed" {
-		err = fmt.Errorf("transaction not in mempool or settled/canceled")
+		err = SwapNotExist
 		return
 	}
 
