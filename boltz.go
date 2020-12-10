@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	getNodesEndpoint             = "/getnodes"
 	getPairsEndpoint             = "/getpairs"
 	createSwapEndpoint           = "/createswap"
 	swapStatusEndpoint           = "/swapstatus"
@@ -522,4 +523,28 @@ func ClaimTransaction(
 	//Ignore the result of broadcasting the transaction via boltz
 	_, _ = broadcastTransaction(ctxHex)
 	return ctxHex, nil
+}
+
+func GetNodePubkey() (string, error) {
+	resp, err := http.Get(apiURL + getNodesEndpoint)
+	if err != nil {
+		return "", fmt.Errorf("getpairs get %v: %w", apiURL+getPairsEndpoint, err)
+	}
+	defer resp.Body.Close()
+
+	var nodes struct {
+		Nodes map[string]struct {
+			URIS    []string `json:"uris"`
+			NodeKey string   `json:"nodeKey"`
+		} `json:"nodes"`
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&nodes)
+	if err != nil {
+		return "", fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
+	}
+	if b, ok := nodes.Nodes["BTC"]; ok {
+		return b.NodeKey, nil
+	}
+	return "", fmt.Errorf("Pubkey not found")
 }
