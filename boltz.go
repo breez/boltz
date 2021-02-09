@@ -134,7 +134,7 @@ func GetReverseSwapInfo() (*ReverseSwapInfo, error) {
 	}, nil
 }
 
-func createReverseSwap(amt int64, feesHash string, preimage []byte, key *btcec.PrivateKey) (*boltzReverseSwap, error) {
+func createReverseSwap(amt int64, feesHash string, preimage []byte, key *btcec.PrivateKey, routingNode []byte) (*boltzReverseSwap, error) {
 	h := sha256.Sum256(preimage)
 	buffer := new(bytes.Buffer)
 	err := json.NewEncoder(buffer).Encode(struct {
@@ -145,6 +145,7 @@ func createReverseSwap(amt int64, feesHash string, preimage []byte, key *btcec.P
 		PreimageHash   string `json:"preimageHash"`
 		PairHash       string `json:"pairHash,omitempty"`
 		ClaimPublicKey string `json:"claimPublicKey"`
+		RoutingNode    string `json:"routingNode,omitempty"`
 	}{
 		Type:           "reversesubmarine",
 		PairID:         "BTC/BTC",
@@ -153,6 +154,7 @@ func createReverseSwap(amt int64, feesHash string, preimage []byte, key *btcec.P
 		PreimageHash:   hex.EncodeToString(h[:]),
 		PairHash:       feesHash,
 		ClaimPublicKey: hex.EncodeToString(key.PubKey().SerializeCompressed()),
+		RoutingNode:    hex.EncodeToString(routingNode),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("json encode %v, %v, %v: %w", amt, preimage, key, err)
@@ -251,7 +253,7 @@ func getPrivate() (*btcec.PrivateKey, error) {
 }
 
 // NewReverseSwap begins the reverse submarine process.
-func NewReverseSwap(amt btcutil.Amount, feesHash string) (*ReverseSwap, error) {
+func NewReverseSwap(amt btcutil.Amount, feesHash string, routingNode []byte) (*ReverseSwap, error) {
 	preimage := getPreimage()
 
 	key, err := getPrivate()
@@ -259,7 +261,7 @@ func NewReverseSwap(amt btcutil.Amount, feesHash string) (*ReverseSwap, error) {
 		return nil, fmt.Errorf("getPrivate: %w", err)
 	}
 
-	rs, err := createReverseSwap(int64(amt), feesHash, preimage, key)
+	rs, err := createReverseSwap(int64(amt), feesHash, preimage, key, routingNode)
 	if err != nil {
 		return nil, fmt.Errorf("createReverseSwap amt:%v, preimage:%x, key:%x; %w", amt, preimage, key, err)
 	}
