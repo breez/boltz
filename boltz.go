@@ -25,6 +25,7 @@ const (
 	getNodesEndpoint             = "/getnodes"
 	getPairsEndpoint             = "/getpairs"
 	createSwapEndpoint           = "/createswap"
+	routingHintsEndpoint         = "/routinghints"
 	swapStatusEndpoint           = "/swapstatus"
 	broadcastTransactionEndpoint = "/broadcasttransaction"
 	claimWitnessInputSize        = 1 + 1 + 8 + 73 + 1 + 32 + 1 + 100
@@ -62,6 +63,16 @@ type ReverseSwapInfo struct {
 		Lockup     int64
 		Claim      int64
 	}
+}
+
+type RoutingHint struct {
+	HopHintsList []struct {
+		NodeID                    string `json:"nodeId"`
+		ChanID                    string `json:"chanId"`
+		FeeBaseMsat               uint32 `json:"feeBaseMsat"`
+		FeeProportionalMillionths uint32 `json:"feeProportionalMillionths"`
+		CltvExpiryDelta           uint32 `json:"cltvExpiryDelta"`
+	} `json:"hopHintsList"`
 }
 
 func GetReverseSwapInfo() (*ReverseSwapInfo, error) {
@@ -132,6 +143,49 @@ func GetReverseSwapInfo() (*ReverseSwapInfo, error) {
 			Claim:      btcPair.Fees.MinerFees.BaseAsset.Reverse.Claim,
 		},
 	}, nil
+}
+
+func GetRoutingHints(routingNode []byte) ([]RoutingHint, error) {
+	buffer := new(bytes.Buffer)
+	err := json.NewEncoder(buffer).Encode(struct {
+		Symbol      string `json:"symbol"`
+		RoutingNode string `json:"routingNode"`
+	}{
+		Symbol:      "BTC",
+		RoutingNode: hex.EncodeToString(routingNode),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("json encode %x: %w", routingNode, err)
+	}
+	resp, err := http.Post(apiURL+routingHintsEndpoint, "application/json", buffer)
+	if err != nil {
+		//log.Printf("routinghints post %v: %v", apiURL+routingHintsEndpoint, err)
+		return nil, fmt.Errorf("routinghints post %v: %w", apiURL+routingHintsEndpoint, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		e := struct {
+			Error string `json:"error"`
+		}{}
+		err = json.NewDecoder(resp.Body).Decode(&e)
+		if err != nil {
+			return nil, fmt.Errorf("json decode (status: %v): %w", resp.Status, err)
+		}
+		badRequestError := BadRequestError(e.Error)
+		//log.Printf("routinghints result (status: %v) %v", resp.Status, &badRequestError)
+		return nil, fmt.Errorf("routinghints result (status: %v) %w", resp.Status, &badRequestError)
+	}
+
+	var boltzHints struct {
+		RoutingHints []RoutingHint `json:"routingHints"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&boltzHints)
+	if err != nil {
+		return nil, fmt.Errorf("json decode (status ok): %w", err)
+	}
+
+	return boltzHints.RoutingHints, nil
 }
 
 func createReverseSwap(amt int64, feesHash string, preimage []byte, key *btcec.PrivateKey, routingNode []byte) (*boltzReverseSwap, error) {
