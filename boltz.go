@@ -12,11 +12,11 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/input"
 	"github.com/lightningnetwork/lnd/lnwallet/chainfee"
 )
@@ -299,7 +299,7 @@ func getPreimage() []byte {
 }
 
 func getPrivate() (*btcec.PrivateKey, error) {
-	k, err := btcec.NewPrivateKey(btcec.S256())
+	k, err := btcec.NewPrivateKey()
 	if err != nil {
 		return nil, fmt.Errorf("btcec.NewPrivateKey: %w", err)
 	}
@@ -474,8 +474,8 @@ func claimTransaction(
 	// Adjust the amount in the txout
 	claimTx.TxOut[0].Value = int64(amt - fees)
 
-	sigHashes := txscript.NewTxSigHashes(claimTx)
-	key, _ := btcec.PrivKeyFromBytes(btcec.S256(), privateKey)
+	sigHashes := input.NewTxSigHashesV0Only(claimTx)
+	key, _ := btcec.PrivKeyFromBytes(privateKey)
 	scriptSig, err := txscript.RawTxInWitnessSignature(claimTx, sigHashes, 0, int64(amt), script, txscript.SigHashAll, key)
 	if err != nil {
 		return nil, fmt.Errorf("txscript.RawTxInWitnessSignature: %w", err)
