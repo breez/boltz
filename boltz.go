@@ -19,6 +19,7 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/input"
 	"github.com/lightningnetwork/lnd/lnwallet/chainfee"
+	"github.com/lightningnetwork/lnd/zpay32"
 )
 
 const (
@@ -254,7 +255,7 @@ func checkHeight(h int64, hs string) string {
 	return ""
 }
 
-func checkReverseSwap(preimage []byte, key *btcec.PrivateKey, rs *boltzReverseSwap) error {
+func checkReverseSwap(amt btcutil.Amount, preimage []byte, key *btcec.PrivateKey, rs *boltzReverseSwap) error {
 	script, err := hex.DecodeString(rs.RedeemScript)
 	if err != nil {
 		return fmt.Errorf("hex.DecodeString %v: %w", rs.RedeemScript, err)
@@ -284,6 +285,25 @@ func checkReverseSwap(preimage []byte, key *btcec.PrivateKey, rs *boltzReverseSw
 	if rs.LockupAddress != a.String() {
 		return fmt.Errorf("bad address: %v instead of %v", rs.LockupAddress, a.String())
 	}
+
+	rawInvoice, err := zpay32.Decode(rs.Invoice, chain)
+	if err != nil {
+		return fmt.Errorf("zpay32.Decode %v: %w", rs.Invoice, err)
+	}
+
+	if rawInvoice.MilliSat == nil {
+		return fmt.Errorf("invoice does not contain an amount: %v", rs.Invoice)
+	}
+
+	actualAmt := *rawInvoice.MilliSat
+	if uint64(amt)*1000 != uint64(actualAmt) {
+		return fmt.Errorf("invoice amount mismatch. expected %v sat. %v", int64(amt), rs.Invoice)
+	}
+
+	if !bytes.Equal(h[:], rawInvoice.PaymentHash[:]) {
+		return fmt.Errorf("invoice payment hash mismatch. expected %x. %v", h[:], rs.Invoice)
+	}
+
 	return nil
 }
 
@@ -320,7 +340,7 @@ func NewReverseSwap(amt btcutil.Amount, feesHash string, routingNode []byte) (*R
 		return nil, fmt.Errorf("createReverseSwap amt:%v, preimage:%x, key:%x; %w", amt, preimage, key, err)
 	}
 
-	err = checkReverseSwap(preimage, key, rs)
+	err = checkReverseSwap(amt, preimage, key, rs)
 	if err != nil {
 		return nil, fmt.Errorf("checkReverseSwap preimage:%x, key:%x, %#v; %w", preimage, key, rs, err)
 	}
@@ -427,7 +447,7 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 	return
 }
 
-//ClaimFees return the fees needed for the claimed transaction for a feePerKw
+// ClaimFees return the fees needed for the claimed transaction for a feePerKw
 func ClaimFee(claimAddress string, feePerKw int64) (int64, error) {
 	addr, err := btcutil.DecodeAddress(claimAddress, chain)
 	if err != nil {
