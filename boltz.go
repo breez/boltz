@@ -208,7 +208,7 @@ func createReverseSwap(amt int64, feesHash string, preimage []byte, key *btcec.P
 		InvoiceAmount:  amt,
 		PreimageHash:   hex.EncodeToString(h[:]),
 		PairHash:       feesHash,
-		ClaimPublicKey: hex.EncodeToString(key.PubKey().SerializeCompressed()),
+		ClaimPublicKey: hex.EncodeToString(txscript.ComputeTaprootKeyNoScript(key.PubKey()).SerializeCompressed()),
 		RoutingNode:    hex.EncodeToString(routingNode),
 	})
 	if err != nil {
@@ -364,7 +364,7 @@ func CheckTransaction(transactionHex, lockupAddress string, amt int64) (string, 
 		if err != nil {
 			return "", fmt.Errorf("txscript.ExtractPkScriptAddrs(%x) %w", txout.PkScript, err)
 		}
-		if class == txscript.WitnessV0ScriptHashTy && len(addresses) == 1 && addresses[0].EncodeAddress() == lockupAddress && requiredsigs == 1 {
+		if (class == txscript.WitnessV0ScriptHashTy || class == txscript.WitnessV1TaprootTy) && len(addresses) == 1 && addresses[0].EncodeAddress() == lockupAddress && requiredsigs == 1 {
 			out = wire.NewOutPoint(tx.Hash(), uint32(i))
 			if int64(amt) != txout.Value {
 				return "", fmt.Errorf("bad amount: %v != %v", int64(amt), txout.Value)
@@ -587,7 +587,7 @@ func ClaimTransaction(
 		if err != nil {
 			return "", fmt.Errorf("txscript.ExtractPkScriptAddrs(%x) %w", txout.PkScript, err)
 		}
-		if class == txscript.WitnessV0ScriptHashTy && requiredsigs == 1 &&
+		if (class == txscript.WitnessV0ScriptHashTy || class == txscript.WitnessV1TaprootTy) && requiredsigs == 1 &&
 			len(addresses) == 1 && addresses[0].EncodeAddress() == lockupAddress.EncodeAddress() {
 			out = wire.NewOutPoint(tx.Hash(), uint32(i))
 			amt = btcutil.Amount(txout.Value)
