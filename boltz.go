@@ -12,13 +12,14 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcutil"
 	"github.com/lightningnetwork/lnd/input"
 	"github.com/lightningnetwork/lnd/lnwallet/chainfee"
+	"github.com/lightningnetwork/lnd/zpay32"
 )
 
 const (
@@ -254,7 +255,7 @@ func checkHeight(h int64, hs string) string {
 	return ""
 }
 
-func checkReverseSwap(preimage []byte, key *btcec.PrivateKey, rs *boltzReverseSwap) error {
+func checkReverseSwap(amt btcutil.Amount, preimage []byte, key *btcec.PrivateKey, rs *boltzReverseSwap) error {
 	script, err := hex.DecodeString(rs.RedeemScript)
 	if err != nil {
 		return fmt.Errorf("hex.DecodeString %v: %w", rs.RedeemScript, err)
@@ -284,6 +285,25 @@ func checkReverseSwap(preimage []byte, key *btcec.PrivateKey, rs *boltzReverseSw
 	if rs.LockupAddress != a.String() {
 		return fmt.Errorf("bad address: %v instead of %v", rs.LockupAddress, a.String())
 	}
+
+	rawInvoice, err := zpay32.Decode(rs.Invoice, chain)
+	if err != nil {
+		return fmt.Errorf("zpay32.Decode %v: %w", rs.Invoice, err)
+	}
+
+	if rawInvoice.MilliSat == nil {
+		return fmt.Errorf("invoice does not contain an amount: %v", rs.Invoice)
+	}
+
+	actualAmt := *rawInvoice.MilliSat
+	if uint64(amt)*1000 != uint64(actualAmt) {
+		return fmt.Errorf("invoice amount mismatch. expected %v sat. %v", int64(amt), rs.Invoice)
+	}
+
+	if !bytes.Equal(h[:], rawInvoice.PaymentHash[:]) {
+		return fmt.Errorf("invoice payment hash mismatch. expected %x. %v", h[:], rs.Invoice)
+	}
+
 	return nil
 }
 
@@ -299,7 +319,7 @@ func getPreimage() []byte {
 }
 
 func getPrivate() (*btcec.PrivateKey, error) {
-	k, err := btcec.NewPrivateKey(btcec.S256())
+	k, err := btcec.NewPrivateKey()
 	if err != nil {
 		return nil, fmt.Errorf("btcec.NewPrivateKey: %w", err)
 	}
@@ -320,7 +340,7 @@ func NewReverseSwap(amt btcutil.Amount, feesHash string, routingNode []byte) (*R
 		return nil, fmt.Errorf("createReverseSwap amt:%v, preimage:%x, key:%x; %w", amt, preimage, key, err)
 	}
 
-	err = checkReverseSwap(preimage, key, rs)
+	err = checkReverseSwap(amt, preimage, key, rs)
 	if err != nil {
 		return nil, fmt.Errorf("checkReverseSwap preimage:%x, key:%x, %#v; %w", preimage, key, rs, err)
 	}
@@ -427,7 +447,7 @@ func GetTransaction(id, lockupAddress string, amt int64) (status, txid, tx strin
 	return
 }
 
-//ClaimFees return the fees needed for the claimed transaction for a feePerKw
+// ClaimFees return the fees needed for the claimed transaction for a feePerKw
 func ClaimFee(claimAddress string, feePerKw int64) (int64, error) {
 	addr, err := btcutil.DecodeAddress(claimAddress, chain)
 	if err != nil {
@@ -450,17 +470,32 @@ func ClaimFee(claimAddress string, feePerKw int64) (int64, error) {
 	return int64(fee), nil
 }
 
+type prevoutFetcher struct {
+	txout *wire.TxOut
+}
+
+func newPrevoutFetcher(txout *wire.TxOut) *prevoutFetcher {
+	return &prevoutFetcher{
+		txout: txout,
+	}
+}
+
+func (p *prevoutFetcher) FetchPrevOutput(wire.OutPoint) *wire.TxOut {
+	return p.txout
+}
+
 func claimTransaction(
 	script []byte,
 	amt btcutil.Amount,
-	txout *wire.OutPoint,
+	outpoint *wire.OutPoint,
 	claimAddress btcutil.Address,
 	preimage []byte,
 	privateKey []byte,
 	fees btcutil.Amount,
+	prevout *wire.TxOut,
 ) ([]byte, error) {
 	claimTx := wire.NewMsgTx(1)
-	txIn := wire.NewTxIn(txout, nil, nil)
+	txIn := wire.NewTxIn(outpoint, nil, nil)
 	txIn.Sequence = 0
 	claimTx.AddTxIn(txIn)
 
@@ -474,8 +509,9 @@ func claimTransaction(
 	// Adjust the amount in the txout
 	claimTx.TxOut[0].Value = int64(amt - fees)
 
-	sigHashes := txscript.NewTxSigHashes(claimTx)
-	key, _ := btcec.PrivKeyFromBytes(btcec.S256(), privateKey)
+	prevoutFetcher := newPrevoutFetcher(prevout)
+	sigHashes := txscript.NewTxSigHashes(claimTx, prevoutFetcher)
+	key, _ := btcec.PrivKeyFromBytes(privateKey)
 	scriptSig, err := txscript.RawTxInWitnessSignature(claimTx, sigHashes, 0, int64(amt), script, txscript.SigHashAll, key)
 	if err != nil {
 		return nil, fmt.Errorf("txscript.RawTxInWitnessSignature: %w", err)
@@ -545,6 +581,7 @@ func ClaimTransaction(
 	}
 	var out *wire.OutPoint
 	var amt btcutil.Amount
+	var outtx *wire.TxOut
 	for i, txout := range tx.MsgTx().TxOut {
 		class, addresses, requiredsigs, err := txscript.ExtractPkScriptAddrs(txout.PkScript, chain)
 		if err != nil {
@@ -554,6 +591,7 @@ func ClaimTransaction(
 			len(addresses) == 1 && addresses[0].EncodeAddress() == lockupAddress.EncodeAddress() {
 			out = wire.NewOutPoint(tx.Hash(), uint32(i))
 			amt = btcutil.Amount(txout.Value)
+			outtx = txout
 		}
 	}
 
@@ -571,7 +609,7 @@ func ClaimTransaction(
 		return "", fmt.Errorf("hex.DecodeString(%v): %w", key, err)
 	}
 
-	ctx, err := claimTransaction(script, amt, out, addr, preim, privateKey, btcutil.Amount(fees))
+	ctx, err := claimTransaction(script, amt, out, addr, preim, privateKey, btcutil.Amount(fees), outtx)
 	if err != nil {
 		return "", fmt.Errorf("claimTransaction: %w", err)
 	}
